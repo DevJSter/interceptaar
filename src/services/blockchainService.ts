@@ -6,13 +6,23 @@ import { CommunityProfile, UserInteraction } from '../types';
 const COMMUNITY_CONTRACT_ABI = [
   "function registerUser(string memory username) external",
   "function updateInteraction(address user, uint8 interactionType, uint256 value) external",
-  "function getUserProfile(address user) external view returns (tuple(string username, uint256 trustScore, uint256 totalLikes, uint256 totalComments, uint256 totalPosts, uint256 totalHelpfulResponses, uint256 reportCount, bool isActive))",
+  "function getUserProfile(address user) external view returns (tuple(string username, uint256 likes, uint256 comments, uint256 posts, uint256 helpfulResponses, uint256 reportsReceived, uint256 reportsMade, uint256 trustScore, uint256 lastUpdateTime, bool isActive, uint256 rewardBalance, uint256 totalEarned, uint256 validationCount, uint256 successfulValidations))",
+  "function recordValidation(address validator, address user, bool successful) external",
+  "function awardCommunityReward(address user, uint256 amount, string memory reason) external",
+  "function claimRewards() external",
+  "function withdrawRewards(uint256 amount) external",
+  "function getUserTier(address user) external view returns (tuple(uint256 minTrustScore, uint256 baseReward, uint256 validationReward, string tierName))",
+  "function getRewardInfo(address user) external view returns (uint256 rewardBalance, uint256 totalEarned, uint256 pendingReward, uint256 validationCount, uint256 successfulValidations, string memory tierName)",
+  "function getTotalRewardsDistributed() external view returns (uint256)",
   "function reportUser(address user, string memory reason) external",
   "function getTopUsers(uint256 limit) external view returns (address[] memory)",
-  "function isUserRegistered(address user) external view returns (bool)",
+  "function getTrustScoreForValidation(address user) external view returns (uint256)",
   "event UserRegistered(address indexed user, string username)",
   "event InteractionUpdated(address indexed user, uint8 interactionType, uint256 value, uint256 newTrustScore)",
-  "event UserReported(address indexed reportedBy, address indexed reportedUser, string reason)"
+  "event UserReported(address indexed reportedBy, address indexed reportedUser, string reason)",
+  "event RewardEarned(address indexed user, uint256 amount, string reason)",
+  "event RewardClaimed(address indexed user, uint256 amount)",
+  "event ValidationPerformed(address indexed validator, address indexed user, bool successful, uint256 reward)"
 ];
 
 export class BlockchainService {
