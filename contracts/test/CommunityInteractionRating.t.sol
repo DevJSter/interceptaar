@@ -16,7 +16,7 @@ contract CommunityInteractionRatingTest is Test {
 
     function testUserRegistration() public {
         vm.prank(user1);
-        rating.registerUser();
+        rating.registerUser("user1");
         
         CommunityInteractionRating.UserProfile memory profile = rating.getUserProfile(user1);
         assertEq(profile.trustScore, 100);
@@ -27,10 +27,10 @@ contract CommunityInteractionRatingTest is Test {
     function testRecordInteractions() public {
         // Register users
         vm.prank(user1);
-        rating.registerUser();
+        rating.registerUser("user1");
         
         vm.prank(user2);
-        rating.registerUser();
+        rating.registerUser("user2");
 
         // User1 records a like
         vm.prank(user1);
@@ -54,10 +54,10 @@ contract CommunityInteractionRatingTest is Test {
     function testHelpfulResponse() public {
         // Register users
         vm.prank(user1);
-        rating.registerUser();
+        rating.registerUser("user1");
         
         vm.prank(user2);
-        rating.registerUser();
+        rating.registerUser("user2");
 
         // User1 marks user2's response as helpful
         vm.prank(user1);

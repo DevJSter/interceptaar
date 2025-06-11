@@ -38,6 +38,10 @@ export interface CommunityProfile {
   totalEarned?: number;
   validationCount?: number;
   successfulValidations?: number;
+  qtoBalance?: string;           // QTO token balance
+  totalQtoEarned?: string;       // Total QTO tokens earned
+  qoneqtInteractions?: number;   // Total interactions on qoneqt.com
+  avgSignificanceScore?: number; // Average AI-determined significance
 }
 
 export interface UserInteraction {
@@ -94,4 +98,74 @@ export interface Config {
     lowRiskOnly: boolean;
     highTrustUsersOnly: boolean;
   };
+}
+
+export interface QoneqtInteractionData {
+  userId: string;
+  userAddress: string;
+  interactionType: QoneqtInteractionType;
+  content: string;
+  timestamp: number;
+  platform: 'qoneqt.com';
+  metadata?: {
+    postId?: string;
+    targetUserId?: string;
+    groupId?: string;
+    eventId?: string;
+    productId?: string;
+    contentHash?: string;
+  };
+}
+
+export enum QoneqtInteractionType {
+  LIKE = 0,
+  COMMENT = 1,
+  SHARE = 2,
+  POST = 3,
+  FOLLOW = 4,
+  STORY_VIEW = 5,
+  MESSAGE = 6,
+  GROUP_JOIN = 7,
+  EVENT_ATTEND = 8,
+  MARKETPLACE_PURCHASE = 9
+}
+
+export interface QtoRewardCalculation {
+  baseReward: string;           // Base reward in QTO wei
+  significanceMultiplier: number; // 0-1000 (AI determined)
+  tierMultiplier: number;       // User tier multiplier
+  finalReward: string;          // Final calculated reward
+  reasoning: string;            // AI reasoning for significance
+}
+
+export interface QtoTokenInfo {
+  name: string;
+  symbol: string;
+  decimals: number;
+  totalSupply: string;
+}
+
+export interface GlobalQtoStats {
+  totalQtoInCirculation: string;
+  totalQoneqtInteractions: number;
+  averageSignificanceScore: number;
+  totalUsersWithQto: number;
+}
+
+export interface SignificanceHistory {
+  baseAmount: string;
+  multiplier: number;
+  finalAmount: string;
+  interactionType: string;
+  significance: string;
+  timestamp: number;
+}
+
+export interface QtoUserStats {
+  qtoBalance: string;
+  totalQtoEarned: string;
+  qoneqtInteractions: number;
+  avgSignificanceScore: number;
+  currentTier: string;
+  significanceHistory: SignificanceHistory[];
 }

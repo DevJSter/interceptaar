@@ -6,6 +6,7 @@ import aiValidationService from './services/aiValidationService';
 import rpcProxyService from './services/rpcProxyService';
 import { blockchainService } from './services/blockchainService';
 import { validationPipelineService } from './services/validationPipelineService';
+import { qtoRoutes } from './routes/qtoRoutes';
 
 const app = express();
 
@@ -337,6 +338,10 @@ app.get('/api/rewards/total', async (req: express.Request, res: express.Response
     });
   }
 });
+
+// QTO reward system routes
+// QTO API routes
+app.use('/api/qto', qtoRoutes);
 
 // 404 handler
 app.use((req, res) => {

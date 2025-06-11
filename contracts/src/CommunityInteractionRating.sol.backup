@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.13;
 
+import "forge-std/Test.sol";
+
 contract CommunityInteractionRating {
     // QTO Token integration
     string public constant TOKEN_NAME = "QoneQt Token";
@@ -23,7 +25,6 @@ contract CommunityInteractionRating {
     }
     
     mapping(address => SignificanceReward[]) public userSignificanceHistory;
-
     struct UserProfile {
         string username;
         uint256 likes;
@@ -86,7 +87,7 @@ contract CommunityInteractionRating {
     uint256 public totalInteractions;
     uint256 public totalRewardsDistributed;
     
-    // Reward system
+    // NEW: Reward system
     RewardTier[] public rewardTiers;
     mapping(address => uint256) public pendingRewards;
     uint256 public constant VALIDATION_BASE_REWARD = 10; // Base reward for validation
@@ -109,7 +110,7 @@ contract CommunityInteractionRating {
     uint256 constant POST_WEIGHT = 5;
     uint256 constant HELPFUL_WEIGHT = 10;
     uint256 constant REPORT_PENALTY = 20;
-    uint256 constant VALIDATION_WEIGHT = 2;
+    uint256 constant VALIDATION_WEIGHT = 2; // NEW: Weight for validation activities
 
     modifier onlyActiveUser() {
         require(userProfiles[msg.sender].isActive, "User not active");
@@ -117,9 +118,6 @@ contract CommunityInteractionRating {
     }
 
     constructor() {
-        // Give contract the initial QTO supply for distribution
-        qtoBalances[address(this)] = TOTAL_SUPPLY;
-        
         // Initialize reward tiers with QTO multipliers
         rewardTiers.push(RewardTier(0, 1, 2, 800, "Bronze"));      // 0-99 trust score, 0.8x multiplier
         rewardTiers.push(RewardTier(100, 3, 5, 1000, "Silver"));   // 100-499 trust score, 1.0x multiplier
@@ -162,11 +160,143 @@ contract CommunityInteractionRating {
             qoneqtInteractions: 0,
             avgSignificanceScore: 0
         });
-
+        
         activeUsers.push(msg.sender);
         emit TrustScoreUpdated(msg.sender, 100, block.timestamp);
     }
 
+    function recordLike(string memory postId) external onlyActiveUser {
+        _recordInteraction(msg.sender, "like", LIKE_WEIGHT, postId);
+        userProfiles[msg.sender].likes++;
+        _updateTrustScore(msg.sender);
+    }
+
+    function recordComment(string memory commentText) external onlyActiveUser {
+        _recordInteraction(msg.sender, "comment", COMMENT_WEIGHT, commentText);
+        userProfiles[msg.sender].comments++;
+        _updateTrustScore(msg.sender);
+    }
+
+    function recordPost(string memory postTitle) external onlyActiveUser {
+        _recordInteraction(msg.sender, "post", POST_WEIGHT, postTitle);
+        userProfiles[msg.sender].posts++;
+        _updateTrustScore(msg.sender);
+    }
+
+    function recordHelpfulResponse(address helper) external onlyActiveUser {
+        require(helper != msg.sender, "Cannot mark own response as helpful");
+        require(!hasUserRatedUser[msg.sender][helper], "Already rated this user");
+        
+        _recordInteraction(helper, "helpful", HELPFUL_WEIGHT, "Helpful response");
+        userProfiles[helper].helpfulResponses++;
+        hasUserRatedUser[msg.sender][helper] = true;
+        _updateTrustScore(helper);
+    }
+
+    function reportUser(address reportedUser, string memory reason) external onlyActiveUser {
+        require(reportedUser != msg.sender, "Cannot report yourself");
+        require(userProfiles[reportedUser].isActive, "Reported user not active");
+        
+        _recordInteraction(reportedUser, "report", 0, reason);
+        userProfiles[reportedUser].reportsReceived++;
+        userProfiles[msg.sender].reportsMade++;
+        
+        _updateTrustScore(reportedUser);
+        emit UserReported(msg.sender, reportedUser, reason);
+    }
+
+    function getUserProfile(address user) external view returns (UserProfile memory) {
+        return userProfiles[user];
+    }
+
+    function getUserInteractionHistory(address user) external view returns (InteractionRecord[] memory) {
+        return userInteractionHistory[user];
+    }
+
+    function getTrustScoreForValidation(address user) external view returns (uint256) {
+        if (!userProfiles[user].isActive) {
+            return 0;
+        }
+        return userProfiles[user].trustScore;
+    }
+
+    function getCommunityStats() external view returns (
+        uint256 totalUsers,
+        uint256 totalInteractionsCount,
+        uint256 averageTrustScore
+    ) {
+        totalUsers = activeUsers.length;
+        totalInteractionsCount = totalInteractions;
+        
+        if (totalUsers == 0) {
+            averageTrustScore = 0;
+        } else {
+            uint256 totalTrust = 0;
+            for (uint256 i = 0; i < activeUsers.length; i++) {
+                totalTrust += userProfiles[activeUsers[i]].trustScore;
+            }
+            averageTrustScore = totalTrust / totalUsers;
+        }
+    }
+
+    function getTopUsersNyTrustScore(uint256 limit) external view returns (address[] memory topUsers, uint256[] memory scores) {
+        uint256 userCount = activeUsers.length;
+        if (limit > userCount) {
+            limit = userCount;
+        }
+        
+        topUsers = new address[](limit);
+        scores = new uint256[](limit);
+        
+        // Simple bubble sort for demonstration (would use more efficient sorting in production)
+        address[] memory sortedUsers = new address[](userCount);
+        uint256[] memory sortedScores = new uint256[](userCount);
+        
+        for (uint256 i = 0; i < userCount; i++) {
+            sortedUsers[i] = activeUsers[i];
+            sortedScores[i] = userProfiles[activeUsers[i]].trustScore;
+        }
+        
+        // Sort by trust score (descending)
+        for (uint256 i = 0; i < userCount - 1; i++) {
+            for (uint256 j = 0; j < userCount - i - 1; j++) {
+                if (sortedScores[j] < sortedScores[j + 1]) {
+                    // Swap scores
+                    uint256 tempScore = sortedScores[j];
+                    sortedScores[j] = sortedScores[j + 1];
+                    sortedScores[j + 1] = tempScore;
+                    
+                    // Swap addresses
+                    address tempAddr = sortedUsers[j];
+                    sortedUsers[j] = sortedUsers[j + 1];
+                    sortedUsers[j + 1] = tempAddr;
+                }
+            }
+        }
+        
+        for (uint256 i = 0; i < limit; i++) {
+            topUsers[i] = sortedUsers[i];
+            scores[i] = sortedScores[i];
+        }
+    }
+
+    // Internal functions
+    function _recordInteraction(address user, string memory interactionType, uint256 value, string memory metadata) internal {
+        InteractionRecord memory record = InteractionRecord({
+            user: user,
+            interactionType: interactionType,
+            timestamp: block.timestamp,
+            value: value,
+            metadata: metadata
+        });
+        
+        userInteractionHistory[user].push(record);
+        totalInteractions++;
+        
+        emit InteractionRecorded(user, interactionType, value, block.timestamp);
+    }
+
+    // NEW: Reward and validation functions
     // QTO Token Functions
     function qtoBalanceOf(address account) external view returns (uint256) {
         return qtoBalances[account];
@@ -197,7 +327,7 @@ contract CommunityInteractionRating {
         address user,
         QoneqtInteractionType interactionType,
         uint256 aiSignificance, // Value from 0-1000 (0.000 to 1.000)
-        string memory /* metadata */
+        string memory metadata
     ) external onlyActiveUser {
         require(userProfiles[user].isActive, "Target user not active");
         require(aiSignificance <= 1000, "Significance must be 0-1000");
@@ -257,61 +387,8 @@ contract CommunityInteractionRating {
         require(users.length == metadatas.length, "Array length mismatch");
         
         for (uint256 i = 0; i < users.length; i++) {
-            _processQoneqtInteractionInternal(users[i], interactionTypes[i], aiSignificances[i], metadatas[i]);
+            processQoneqtInteraction(users[i], interactionTypes[i], aiSignificances[i], metadatas[i]);
         }
-    }
-
-    // Internal function for processing QoneQt interactions
-    function _processQoneqtInteractionInternal(
-        address user,
-        QoneqtInteractionType interactionType,
-        uint256 aiSignificance,
-        string memory /* metadata */
-    ) internal {
-        require(userProfiles[user].isActive, "Target user not active");
-        require(aiSignificance <= 1000, "Significance must be 0-1000");
-        
-        // Calculate base reward for this interaction type
-        uint256 baseReward = qoneqtBaseRewards[interactionType];
-        
-        // Apply AI significance multiplier
-        uint256 significanceMultiplier = aiSignificance; // 0-1000 where 1000 = 1.0x
-        uint256 significanceReward = (baseReward * significanceMultiplier) / 1000;
-        
-        // Apply user tier multiplier
-        RewardTier memory userTier = _getUserTier(user);
-        uint256 tierMultipliedReward = (significanceReward * userTier.qtoMultiplier) / 1000;
-        
-        // Record the significance reward
-        SignificanceReward memory reward = SignificanceReward({
-            baseAmount: baseReward,
-            multiplier: significanceMultiplier,
-            finalAmount: tierMultipliedReward,
-            interactionType: _getInteractionTypeName(interactionType),
-            significance: _getSignificanceLevel(aiSignificance),
-            timestamp: block.timestamp
-        });
-        
-        userSignificanceHistory[user].push(reward);
-        
-        // Update user profile
-        UserProfile storage profile = userProfiles[user];
-        profile.qtoBalance += tierMultipliedReward;
-        profile.totalQtoEarned += tierMultipliedReward;
-        profile.qoneqtInteractions++;
-        
-        // Update average significance score
-        uint256 totalSignificance = profile.avgSignificanceScore * (profile.qoneqtInteractions - 1);
-        profile.avgSignificanceScore = (totalSignificance + aiSignificance) / profile.qoneqtInteractions;
-        
-        // Update trust score based on interaction
-        _updateTrustScoreFromQoneqt(user, interactionType, aiSignificance);
-        
-        // Add to QTO total supply in circulation
-        qtoBalances[user] += tierMultipliedReward;
-        
-        emit QtoRewardEarned(user, tierMultipliedReward, _getInteractionTypeName(interactionType), aiSignificance);
-        emit QoneqtInteractionProcessed(user, interactionType, aiSignificance, tierMultipliedReward);
     }
 
     // Get user's QoneQt interaction history
@@ -356,47 +433,7 @@ contract CommunityInteractionRating {
         return (significanceReward * userTier.qtoMultiplier) / 1000;
     }
 
-    // Legacy functions (kept for compatibility)
-    function recordLike(string memory postId) external onlyActiveUser {
-        _recordInteraction(msg.sender, "like", LIKE_WEIGHT, postId);
-        userProfiles[msg.sender].likes++;
-        _updateTrustScore(msg.sender);
-    }
-
-    function recordComment(string memory commentText) external onlyActiveUser {
-        _recordInteraction(msg.sender, "comment", COMMENT_WEIGHT, commentText);
-        userProfiles[msg.sender].comments++;
-        _updateTrustScore(msg.sender);
-    }
-
-    function recordPost(string memory postTitle) external onlyActiveUser {
-        _recordInteraction(msg.sender, "post", POST_WEIGHT, postTitle);
-        userProfiles[msg.sender].posts++;
-        _updateTrustScore(msg.sender);
-    }
-
-    function recordHelpfulResponse(address helper) external onlyActiveUser {
-        require(helper != msg.sender, "Cannot mark own response as helpful");
-        require(!hasUserRatedUser[msg.sender][helper], "Already rated this user");
-        
-        _recordInteraction(helper, "helpful", HELPFUL_WEIGHT, "Helpful response");
-        userProfiles[helper].helpfulResponses++;
-        hasUserRatedUser[msg.sender][helper] = true;
-        _updateTrustScore(helper);
-    }
-
-    function reportUser(address reportedUser, string memory reason) external onlyActiveUser {
-        require(reportedUser != msg.sender, "Cannot report yourself");
-        require(userProfiles[reportedUser].isActive, "Reported user not active");
-        
-        _recordInteraction(reportedUser, "report", 0, reason);
-        userProfiles[reportedUser].reportsReceived++;
-        userProfiles[msg.sender].reportsMade++;
-        
-        _updateTrustScore(reportedUser);
-        emit UserReported(msg.sender, reportedUser, reason);
-    }
-
+    // Legacy validation function (kept for compatibility)
     function recordValidation(address validator, address user, bool successful) external onlyActiveUser {
         require(validator == msg.sender, "Can only record own validations");
         
@@ -404,6 +441,22 @@ contract CommunityInteractionRating {
         validatorProfile.validationCount++;
         
         uint256 reward = VALIDATION_BASE_REWARD;
+        
+        if (successful) {
+            validatorProfile.successfulValidations++;
+            reward += SUCCESSFUL_VALIDATION_BONUS;
+        }
+        
+        // Apply tier multiplier
+        RewardTier memory tier = _getUserTier(validator);
+        reward = (reward * tier.validationReward) / tier.baseReward;
+        
+        _recordInteraction(validator, "validation", VALIDATION_WEIGHT, successful ? "successful" : "failed");
+        _awardReward(validator, reward, "Transaction validation");
+        _updateTrustScore(validator);
+        
+        emit ValidationPerformed(validator, user, successful, reward);
+    }
         
         if (successful) {
             validatorProfile.successfulValidations++;
@@ -441,24 +494,11 @@ contract CommunityInteractionRating {
         
         userProfiles[msg.sender].rewardBalance -= amount;
         
+        // In a real implementation, this would transfer tokens/ETH to the user
+        // For this demo, we just emit an event
         emit RewardClaimed(msg.sender, amount);
     }
     
-    function getUserProfile(address user) external view returns (UserProfile memory) {
-        return userProfiles[user];
-    }
-
-    function getUserInteractionHistory(address user) external view returns (InteractionRecord[] memory) {
-        return userInteractionHistory[user];
-    }
-
-    function getTrustScoreForValidation(address user) external view returns (uint256) {
-        if (!userProfiles[user].isActive) {
-            return 0;
-        }
-        return userProfiles[user].trustScore;
-    }
-
     function getUserTier(address user) external view returns (RewardTier memory) {
         return _getUserTier(user);
     }
@@ -487,64 +527,65 @@ contract CommunityInteractionRating {
     function getTotalRewardsDistributed() external view returns (uint256) {
         return totalRewardsDistributed;
     }
-
-    function getCommunityStats() external view returns (
-        uint256 totalUsers,
-        uint256 totalInteractionsCount,
-        uint256 averageTrustScore
-    ) {
-        totalUsers = activeUsers.length;
-        totalInteractionsCount = totalInteractions;
+    
+    function _awardReward(address user, uint256 amount, string memory reason) internal {
+        UserProfile storage profile = userProfiles[user];
         
-        if (totalUsers == 0) {
-            averageTrustScore = 0;
+        // Apply tier multiplier
+        RewardTier memory tier = _getUserTier(user);
+        uint256 finalAmount = (amount * tier.baseReward);
+        
+        pendingRewards[user] += finalAmount;
+        profile.totalEarned += finalAmount;
+        totalRewardsDistributed += finalAmount;
+        
+        emit RewardEarned(user, finalAmount, reason);
+    }
+    
+    function _getUserTier(address user) internal view returns (RewardTier memory) {
+        uint256 trustScore = userProfiles[user].trustScore;
+        
+        // Find the appropriate tier (highest tier that user qualifies for)
+        RewardTier memory userTier = rewardTiers[0]; // Default to Bronze
+        
+        for (uint256 i = 0; i < rewardTiers.length; i++) {
+            if (trustScore >= rewardTiers[i].minTrustScore) {
+                userTier = rewardTiers[i];
+            }
+        }
+        
+        return userTier;
+    }
+
+    function _updateTrustScore(address user) internal {
+        UserProfile storage profile = userProfiles[user];
+        
+        // Calculate new trust score based on interactions (including validations)
+        uint256 positiveScore = (profile.likes * LIKE_WEIGHT) +
+                               (profile.comments * COMMENT_WEIGHT) +
+                               (profile.posts * POST_WEIGHT) +
+                               (profile.helpfulResponses * HELPFUL_WEIGHT) +
+                               (profile.validationCount * VALIDATION_WEIGHT);
+        
+        uint256 negativeScore = profile.reportsReceived * REPORT_PENALTY;
+        
+        // Calculate final score (minimum 0, maximum 1000)
+        uint256 newScore;
+        if (positiveScore > negativeScore) {
+            newScore = 100 + (positiveScore - negativeScore);
+            if (newScore > 1000) {
+                newScore = 1000;
+            }
         } else {
-            uint256 totalTrust = 0;
-            for (uint256 i = 0; i < activeUsers.length; i++) {
-                totalTrust += userProfiles[activeUsers[i]].trustScore;
-            }
-            averageTrustScore = totalTrust / totalUsers;
-        }
-    }
-
-    // QTO Token information functions
-    function getQtoTokenInfo() external pure returns (
-        string memory name,
-        string memory symbol,
-        uint8 decimals,
-        uint256 totalSupply
-    ) {
-        return (TOKEN_NAME, TOKEN_SYMBOL, TOKEN_DECIMALS, TOTAL_SUPPLY);
-    }
-
-    // Global QTO statistics
-    function getGlobalQtoStats() external view returns (
-        uint256 totalQtoInCirculation,
-        uint256 totalQoneqtInteractions,
-        uint256 averageSignificanceScore,
-        uint256 totalUsersWithQto
-    ) {
-        uint256 totalInCirculation = 0;
-        uint256 totalQoneqtInteractionsCount = 0;
-        uint256 totalSignificance = 0;
-        uint256 usersWithQto = 0;
-        
-        for (uint256 i = 0; i < activeUsers.length; i++) {
-            UserProfile storage profile = userProfiles[activeUsers[i]];
-            totalInCirculation += profile.qtoBalance;
-            totalQoneqtInteractionsCount += profile.qoneqtInteractions;
-            
-            if (profile.qoneqtInteractions > 0) {
-                totalSignificance += profile.avgSignificanceScore;
-                usersWithQto++;
-            }
+            newScore = 0;
         }
         
-        uint256 avgSignificance = usersWithQto > 0 ? totalSignificance / usersWithQto : 0;
+        profile.trustScore = newScore;
+        profile.lastUpdateTime = block.timestamp;
         
-        return (totalInCirculation, totalQoneqtInteractionsCount, avgSignificance, usersWithQto);
+        emit TrustScoreUpdated(user, newScore, block.timestamp);
     }
-
+    
     // Helper functions for QoneQt interactions
     function _getInteractionTypeName(QoneqtInteractionType interactionType) internal pure returns (string memory) {
         if (interactionType == QoneqtInteractionType.LIKE) return "like";
@@ -607,77 +648,41 @@ contract CommunityInteractionRating {
         emit TrustScoreUpdated(user, profile.trustScore, block.timestamp);
     }
 
-    // Internal functions
-    function _recordInteraction(address user, string memory interactionType, uint256 value, string memory metadata) internal {
-        InteractionRecord memory record = InteractionRecord({
-            user: user,
-            interactionType: interactionType,
-            timestamp: block.timestamp,
-            value: value,
-            metadata: metadata
-        });
-        
-        userInteractionHistory[user].push(record);
-        totalInteractions++;
-        
-        emit InteractionRecorded(user, interactionType, value, block.timestamp);
+    // QTO Token information functions
+    function getQtoTokenInfo() external pure returns (
+        string memory name,
+        string memory symbol,
+        uint8 decimals,
+        uint256 totalSupply
+    ) {
+        return (TOKEN_NAME, TOKEN_SYMBOL, TOKEN_DECIMALS, TOTAL_SUPPLY);
     }
 
-    function _awardReward(address user, uint256 amount, string memory reason) internal {
-        UserProfile storage profile = userProfiles[user];
+    // Global QTO statistics
+    function getGlobalQtoStats() external view returns (
+        uint256 totalQtoInCirculation,
+        uint256 totalQoneqtInteractions,
+        uint256 averageSignificanceScore,
+        uint256 totalUsersWithQto
+    ) {
+        uint256 totalInCirculation = 0;
+        uint256 totalInteractions = 0;
+        uint256 totalSignificance = 0;
+        uint256 usersWithQto = 0;
         
-        // Apply tier multiplier
-        RewardTier memory tier = _getUserTier(user);
-        uint256 finalAmount = (amount * tier.baseReward);
-        
-        pendingRewards[user] += finalAmount;
-        profile.totalEarned += finalAmount;
-        totalRewardsDistributed += finalAmount;
-        
-        emit RewardEarned(user, finalAmount, reason);
-    }
-    
-    function _getUserTier(address user) internal view returns (RewardTier memory) {
-        uint256 trustScore = userProfiles[user].trustScore;
-        
-        // Find the appropriate tier (highest tier that user qualifies for)
-        RewardTier memory userTier = rewardTiers[0]; // Default to Bronze
-        
-        for (uint256 i = 0; i < rewardTiers.length; i++) {
-            if (trustScore >= rewardTiers[i].minTrustScore) {
-                userTier = rewardTiers[i];
+        for (uint256 i = 0; i < activeUsers.length; i++) {
+            UserProfile storage profile = userProfiles[activeUsers[i]];
+            totalInCirculation += profile.qtoBalance;
+            totalInteractions += profile.qoneqtInteractions;
+            
+            if (profile.qoneqtInteractions > 0) {
+                totalSignificance += profile.avgSignificanceScore;
+                usersWithQto++;
             }
         }
         
-        return userTier;
-    }
-
-    function _updateTrustScore(address user) internal {
-        UserProfile storage profile = userProfiles[user];
+        uint256 avgSignificance = usersWithQto > 0 ? totalSignificance / usersWithQto : 0;
         
-        // Calculate new trust score based on interactions (including validations)
-        uint256 positiveScore = (profile.likes * LIKE_WEIGHT) +
-                               (profile.comments * COMMENT_WEIGHT) +
-                               (profile.posts * POST_WEIGHT) +
-                               (profile.helpfulResponses * HELPFUL_WEIGHT) +
-                               (profile.validationCount * VALIDATION_WEIGHT);
-        
-        uint256 negativeScore = profile.reportsReceived * REPORT_PENALTY;
-        
-        // Calculate final score (minimum 0, maximum 1000)
-        uint256 newScore;
-        if (positiveScore > negativeScore) {
-            newScore = 100 + (positiveScore - negativeScore);
-            if (newScore > 1000) {
-                newScore = 1000;
-            }
-        } else {
-            newScore = 0;
-        }
-        
-        profile.trustScore = newScore;
-        profile.lastUpdateTime = block.timestamp;
-        
-        emit TrustScoreUpdated(user, newScore, block.timestamp);
+        return (totalInCirculation, totalInteractions, avgSignificance, usersWithQto);
     }
 }

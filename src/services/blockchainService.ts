@@ -6,23 +6,44 @@ import { CommunityProfile, UserInteraction } from '../types';
 const COMMUNITY_CONTRACT_ABI = [
   "function registerUser(string memory username) external",
   "function updateInteraction(address user, uint8 interactionType, uint256 value) external",
-  "function getUserProfile(address user) external view returns (tuple(string username, uint256 likes, uint256 comments, uint256 posts, uint256 helpfulResponses, uint256 reportsReceived, uint256 reportsMade, uint256 trustScore, uint256 lastUpdateTime, bool isActive, uint256 rewardBalance, uint256 totalEarned, uint256 validationCount, uint256 successfulValidations))",
+  "function getUserProfile(address user) external view returns (tuple(string username, uint256 likes, uint256 comments, uint256 posts, uint256 helpfulResponses, uint256 reportsReceived, uint256 reportsMade, uint256 trustScore, uint256 lastUpdateTime, bool isActive, uint256 rewardBalance, uint256 totalEarned, uint256 validationCount, uint256 successfulValidations, uint256 qtoBalance, uint256 totalQtoEarned, uint256 qoneqtInteractions, uint256 avgSignificanceScore))",
   "function recordValidation(address validator, address user, bool successful) external",
   "function awardCommunityReward(address user, uint256 amount, string memory reason) external",
   "function claimRewards() external",
   "function withdrawRewards(uint256 amount) external",
-  "function getUserTier(address user) external view returns (tuple(uint256 minTrustScore, uint256 baseReward, uint256 validationReward, string tierName))",
+  "function getUserTier(address user) external view returns (tuple(uint256 minTrustScore, uint256 baseReward, uint256 validationReward, uint256 qtoMultiplier, string tierName))",
   "function getRewardInfo(address user) external view returns (uint256 rewardBalance, uint256 totalEarned, uint256 pendingReward, uint256 validationCount, uint256 successfulValidations, string memory tierName)",
   "function getTotalRewardsDistributed() external view returns (uint256)",
   "function reportUser(address user, string memory reason) external",
   "function getTopUsers(uint256 limit) external view returns (address[] memory)",
   "function getTrustScoreForValidation(address user) external view returns (uint256)",
+  
+  // QTO Token Functions
+  "function qtoBalanceOf(address account) external view returns (uint256)",
+  "function qtoTransfer(address to, uint256 amount) external returns (bool)",
+  "function qtoApprove(address spender, uint256 amount) external returns (bool)",
+  "function qtoAllowance(address owner, address spender) external view returns (uint256)",
+  
+  // QoneQt Interaction Functions  
+  "function processQoneqtInteraction(address user, uint8 interactionType, uint256 aiSignificance, string memory metadata) external",
+  "function batchProcessQoneqtInteractions(address[] memory users, uint8[] memory interactionTypes, uint256[] memory aiSignificances, string[] memory metadatas) external",
+  "function getUserSignificanceHistory(address user) external view returns (tuple(uint256 baseAmount, uint256 multiplier, uint256 finalAmount, string interactionType, string significance, uint256 timestamp)[] memory)",
+  "function getQtoRewardStats(address user) external view returns (uint256 qtoBalance, uint256 totalQtoEarned, uint256 qoneqtInteractions, uint256 avgSignificanceScore, string memory currentTier)",
+  "function getInteractionBaseReward(uint8 interactionType) external view returns (uint256)",
+  "function estimateQtoReward(address user, uint8 interactionType, uint256 aiSignificance) external view returns (uint256)",
+  "function getQtoTokenInfo() external pure returns (string memory name, string memory symbol, uint8 decimals, uint256 totalSupply)",
+  "function getGlobalQtoStats() external view returns (uint256 totalQtoInCirculation, uint256 totalQoneqtInteractions, uint256 averageSignificanceScore, uint256 totalUsersWithQto)",
+  
+  // Events
   "event UserRegistered(address indexed user, string username)",
   "event InteractionUpdated(address indexed user, uint8 interactionType, uint256 value, uint256 newTrustScore)",
   "event UserReported(address indexed reportedBy, address indexed reportedUser, string reason)",
   "event RewardEarned(address indexed user, uint256 amount, string reason)",
   "event RewardClaimed(address indexed user, uint256 amount)",
-  "event ValidationPerformed(address indexed validator, address indexed user, bool successful, uint256 reward)"
+  "event ValidationPerformed(address indexed validator, address indexed user, bool successful, uint256 reward)",
+  "event QtoRewardEarned(address indexed user, uint256 amount, string interactionType, uint256 significance)",
+  "event QtoTransfer(address indexed from, address indexed to, uint256 amount)",
+  "event QoneqtInteractionProcessed(address indexed user, uint8 interactionType, uint256 significance, uint256 reward)"
 ];
 
 export class BlockchainService {
@@ -397,6 +418,237 @@ export class BlockchainService {
         trustLevel: 'low',
         profile: null,
         warnings: ['Error accessing community data']
+      };
+    }
+  }
+
+  /**
+   * QTO Token Functions
+   */
+  
+  /**
+   * Get QTO token balance for a user
+   */
+  async getQtoBalance(userAddress: string): Promise<string> {
+    try {
+      const balance = await this.contract.qtoBalanceOf(userAddress);
+      return balance.toString();
+    } catch (error) {
+      console.error('Error fetching QTO balance:', error);
+      return '0';
+    }
+  }
+
+  /**
+   * Transfer QTO tokens between users
+   */
+  async transferQto(fromAddress: string, toAddress: string, amount: string): Promise<boolean> {
+    try {
+      const tx = await this.contract.qtoTransfer(toAddress, amount);
+      await tx.wait();
+      
+      console.log(`QTO transfer: ${amount} from ${fromAddress} to ${toAddress}`);
+      return true;
+    } catch (error) {
+      console.error('Error transferring QTO:', error);
+      return false;
+    }
+  }
+
+  /**
+   * QoneQt Interaction Processing Functions
+   */
+  
+  /**
+   * Process a single QoneQt interaction with AI significance
+   */
+  async processQoneqtInteraction(
+    userAddress: string,
+    interactionType: number,
+    aiSignificance: number,
+    metadata: string
+  ): Promise<string> {
+    try {
+      const tx = await this.contract.processQoneqtInteraction(
+        userAddress,
+        interactionType,
+        aiSignificance,
+        metadata
+      );
+      await tx.wait();
+      
+      console.log(`QoneQt interaction processed: ${userAddress}, type: ${interactionType}, significance: ${aiSignificance}`);
+      return tx.hash;
+    } catch (error) {
+      console.error('Error processing QoneQt interaction:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Batch process multiple QoneQt interactions
+   */
+  async batchProcessQoneqtInteractions(
+    users: string[],
+    interactionTypes: number[],
+    aiSignificances: number[],
+    metadatas: string[]
+  ): Promise<string> {
+    try {
+      const tx = await this.contract.batchProcessQoneqtInteractions(
+        users,
+        interactionTypes,
+        aiSignificances,
+        metadatas
+      );
+      await tx.wait();
+      
+      console.log(`Batch processed ${users.length} QoneQt interactions`);
+      return tx.hash;
+    } catch (error) {
+      console.error('Error batch processing QoneQt interactions:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get user's significance history
+   */
+  async getUserSignificanceHistory(userAddress: string): Promise<Array<{
+    baseAmount: string;
+    multiplier: number;
+    finalAmount: string;
+    interactionType: string;
+    significance: string;
+    timestamp: number;
+  }>> {
+    try {
+      const history = await this.contract.getUserSignificanceHistory(userAddress);
+      
+      return history.map((record: any) => ({
+        baseAmount: record.baseAmount.toString(),
+        multiplier: Number(record.multiplier),
+        finalAmount: record.finalAmount.toString(),
+        interactionType: record.interactionType,
+        significance: record.significance,
+        timestamp: Number(record.timestamp)
+      }));
+    } catch (error) {
+      console.error('Error fetching user significance history:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get user's QTO reward statistics
+   */
+  async getQtoRewardStats(userAddress: string): Promise<{
+    qtoBalance: string;
+    totalQtoEarned: string;
+    qoneqtInteractions: number;
+    avgSignificanceScore: number;
+    currentTier: string;
+  } | null> {
+    try {
+      const stats = await this.contract.getQtoRewardStats(userAddress);
+      
+      return {
+        qtoBalance: stats.qtoBalance.toString(),
+        totalQtoEarned: stats.totalQtoEarned.toString(),
+        qoneqtInteractions: Number(stats.qoneqtInteractions),
+        avgSignificanceScore: Number(stats.avgSignificanceScore),
+        currentTier: stats.currentTier
+      };
+    } catch (error) {
+      console.error('Error fetching QTO reward stats:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get base reward for interaction type
+   */
+  async getInteractionBaseReward(interactionType: number): Promise<string> {
+    try {
+      const reward = await this.contract.getInteractionBaseReward(interactionType);
+      return reward.toString();
+    } catch (error) {
+      console.error('Error fetching interaction base reward:', error);
+      return '0';
+    }
+  }
+
+  /**
+   * Estimate QTO reward for an interaction
+   */
+  async estimateQtoReward(
+    userAddress: string,
+    interactionType: number,
+    aiSignificance: number
+  ): Promise<string> {
+    try {
+      const reward = await this.contract.estimateQtoReward(userAddress, interactionType, aiSignificance);
+      return reward.toString();
+    } catch (error) {
+      console.error('Error estimating QTO reward:', error);
+      return '0';
+    }
+  }
+
+  /**
+   * Get QTO token information
+   */
+  async getQtoTokenInfo(): Promise<{
+    name: string;
+    symbol: string;
+    decimals: number;
+    totalSupply: string;
+  }> {
+    try {
+      const info = await this.contract.getQtoTokenInfo();
+      
+      return {
+        name: info.name,
+        symbol: info.symbol,
+        decimals: Number(info.decimals),
+        totalSupply: info.totalSupply.toString()
+      };
+    } catch (error) {
+      console.error('Error fetching QTO token info:', error);
+      return {
+        name: 'QoneQt Token',
+        symbol: 'QTO',
+        decimals: 18,
+        totalSupply: '1000000000000000000000000000'
+      };
+    }
+  }
+
+  /**
+   * Get global QTO statistics
+   */
+  async getGlobalQtoStats(): Promise<{
+    totalQtoInCirculation: string;
+    totalQoneqtInteractions: number;
+    averageSignificanceScore: number;
+    totalUsersWithQto: number;
+  }> {
+    try {
+      const stats = await this.contract.getGlobalQtoStats();
+      
+      return {
+        totalQtoInCirculation: stats.totalQtoInCirculation.toString(),
+        totalQoneqtInteractions: Number(stats.totalQoneqtInteractions),
+        averageSignificanceScore: Number(stats.averageSignificanceScore),
+        totalUsersWithQto: Number(stats.totalUsersWithQto)
+      };
+    } catch (error) {
+      console.error('Error fetching global QTO stats:', error);
+      return {
+        totalQtoInCirculation: '0',
+        totalQoneqtInteractions: 0,
+        averageSignificanceScore: 0,
+        totalUsersWithQto: 0
       };
     }
   }
