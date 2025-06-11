@@ -1,0 +1,261 @@
+import { ethers } from 'ethers';
+import config from '../utils/config';
+import { CommunityProfile, UserInteraction } from '../types';
+
+// ABI for the CommunityInteractionRating contract
+const COMMUNITY_CONTRACT_ABI = [
+  "function registerUser(string memory username) external",
+  "function updateInteraction(address user, uint8 interactionType, uint256 value) external",
+  "function getUserProfile(address user) external view returns (tuple(string username, uint256 trustScore, uint256 totalLikes, uint256 totalComments, uint256 totalPosts, uint256 totalHelpfulResponses, uint256 reportCount, bool isActive))",
+  "function reportUser(address user, string memory reason) external",
+  "function getTopUsers(uint256 limit) external view returns (address[] memory)",
+  "function isUserRegistered(address user) external view returns (bool)",
+  "event UserRegistered(address indexed user, string username)",
+  "event InteractionUpdated(address indexed user, uint8 interactionType, uint256 value, uint256 newTrustScore)",
+  "event UserReported(address indexed reportedBy, address indexed reportedUser, string reason)"
+];
+
+export class BlockchainService {
+  private provider: ethers.JsonRpcProvider;
+  private wallet: ethers.Wallet;
+  private contract: ethers.Contract;
+
+  constructor() {
+    this.provider = new ethers.JsonRpcProvider(config.targetRpcUrl);
+    this.wallet = new ethers.Wallet(config.privateKey, this.provider);
+    this.contract = new ethers.Contract(
+      config.contractAddress,
+      COMMUNITY_CONTRACT_ABI,
+      this.wallet
+    );
+  }
+
+  /**
+   * Register a new user in the community system
+   */
+  async registerUser(userAddress: string, username: string): Promise<boolean> {
+    try {
+      const isRegistered = await this.isUserRegistered(userAddress);
+      if (isRegistered) {
+        console.log(`User ${userAddress} is already registered`);
+        return true;
+      }
+
+      const tx = await this.contract.registerUser(username);
+      await tx.wait();
+      
+      console.log(`User ${userAddress} registered with username: ${username}`);
+      return true;
+    } catch (error) {
+      console.error('Error registering user:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if a user is registered
+   */
+  async isUserRegistered(userAddress: string): Promise<boolean> {
+    try {
+      return await this.contract.isUserRegistered(userAddress);
+    } catch (error) {
+      console.error('Error checking user registration:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get user's community profile
+   */
+  async getUserProfile(userAddress: string): Promise<CommunityProfile | null> {
+    try {
+      const profile = await this.contract.getUserProfile(userAddress);
+      
+      return {
+        username: profile.username,
+        trustScore: Number(profile.trustScore),
+        totalLikes: Number(profile.totalLikes),
+        totalComments: Number(profile.totalComments),
+        totalPosts: Number(profile.totalPosts),
+        totalHelpfulResponses: Number(profile.totalHelpfulResponses),
+        reportCount: Number(profile.reportCount),
+        isActive: profile.isActive
+      };
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Update user interaction (like, comment, post, helpful response)
+   */
+  async updateInteraction(userAddress: string, interaction: UserInteraction): Promise<boolean> {
+    try {
+      // Ensure user is registered first
+      const isRegistered = await this.isUserRegistered(userAddress);
+      if (!isRegistered) {
+        console.log(`User ${userAddress} not registered, registering with default username`);
+        await this.registerUser(userAddress, `User_${userAddress.slice(-6)}`);
+      }
+
+      // Map interaction type to contract enum
+      let interactionType: number;
+      switch (interaction.type) {
+        case 'like':
+          interactionType = 0;
+          break;
+        case 'comment':
+          interactionType = 1;
+          break;
+        case 'post':
+          interactionType = 2;
+          break;
+        case 'helpful_response':
+          interactionType = 3;
+          break;
+        default:
+          throw new Error(`Unknown interaction type: ${interaction.type}`);
+      }
+
+      const tx = await this.contract.updateInteraction(
+        userAddress,
+        interactionType,
+        interaction.value || 1
+      );
+      await tx.wait();
+
+      console.log(`Updated interaction for ${userAddress}: ${interaction.type} with value ${interaction.value}`);
+      return true;
+    } catch (error) {
+      console.error('Error updating interaction:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Report a user for malicious behavior
+   */
+  async reportUser(reporterAddress: string, reportedAddress: string, reason: string): Promise<boolean> {
+    try {
+      const tx = await this.contract.reportUser(reportedAddress, reason);
+      await tx.wait();
+      
+      console.log(`User ${reportedAddress} reported by ${reporterAddress} for: ${reason}`);
+      return true;
+    } catch (error) {
+      console.error('Error reporting user:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get top users by trust score
+   */
+  async getTopUsers(limit: number = 10): Promise<string[]> {
+    try {
+      const topUsers = await this.contract.getTopUsers(limit);
+      return topUsers;
+    } catch (error) {
+      console.error('Error fetching top users:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Calculate community trust level based on trust score
+   */
+  calculateTrustLevel(trustScore: number): 'low' | 'medium' | 'high' | 'very_high' {
+    if (trustScore >= 1000) return 'very_high';
+    if (trustScore >= 500) return 'high';
+    if (trustScore >= 100) return 'medium';
+    return 'low';
+  }
+
+  /**
+   * Get blockchain network info
+   */
+  async getNetworkInfo(): Promise<{ chainId: number; blockNumber: number }> {
+    try {
+      const network = await this.provider.getNetwork();
+      const blockNumber = await this.provider.getBlockNumber();
+      
+      return {
+        chainId: Number(network.chainId),
+        blockNumber
+      };
+    } catch (error) {
+      console.error('Error fetching network info:', error);
+      return { chainId: 0, blockNumber: 0 };
+    }
+  }
+
+  /**
+   * Validate transaction with community data
+   */
+  async validateTransactionWithCommunity(
+    userAddress: string,
+    transactionData: any
+  ): Promise<{
+    isValid: boolean;
+    trustLevel: 'low' | 'medium' | 'high' | 'very_high';
+    profile: CommunityProfile | null;
+    warnings: string[];
+  }> {
+    try {
+      const profile = await this.getUserProfile(userAddress);
+      const warnings: string[] = [];
+      let isValid = true;
+
+      if (!profile) {
+        warnings.push('User not found in community system');
+        return {
+          isValid: false,
+          trustLevel: 'low',
+          profile: null,
+          warnings
+        };
+      }
+
+      const trustLevel = this.calculateTrustLevel(profile.trustScore);
+
+      // Check for high-risk indicators
+      if (profile.reportCount > 5) {
+        warnings.push('User has multiple reports');
+        isValid = false;
+      }
+
+      if (!profile.isActive) {
+        warnings.push('User account is inactive');
+        isValid = false;
+      }
+
+      // Additional validation based on transaction value and trust level
+      if (transactionData.value && ethers.parseEther('10') < ethers.getBigInt(transactionData.value)) {
+        if (trustLevel === 'low') {
+          warnings.push('Large transaction from low-trust user');
+          isValid = false;
+        } else if (trustLevel === 'medium') {
+          warnings.push('Large transaction - medium trust user needs additional verification');
+        }
+      }
+
+      return {
+        isValid,
+        trustLevel,
+        profile,
+        warnings
+      };
+    } catch (error) {
+      console.error('Error validating transaction with community:', error);
+      return {
+        isValid: false,
+        trustLevel: 'low',
+        profile: null,
+        warnings: ['Error accessing community data']
+      };
+    }
+  }
+}
+
+export const blockchainService = new BlockchainService();

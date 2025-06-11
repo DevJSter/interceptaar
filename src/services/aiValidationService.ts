@@ -1,7 +1,8 @@
 import axios from 'axios';
 import config from '../utils/config';
-import { RPCRequest, AIValidationResult } from '../types';
+import { RPCRequest, AIValidationResult, CommunityProfile } from '../types';
 import { isReadOnlyMethod, isHighRiskMethod, formatEther } from '../utils/helpers';
+import { blockchainService } from './blockchainService';
 
 export class AIValidationService {
   private baseUrl: string;
@@ -12,7 +13,7 @@ export class AIValidationService {
     this.model = config.ollamaModel;
   }
 
-  async validateRPCCall(request: RPCRequest): Promise<AIValidationResult> {
+  async validateRPCCall(request: RPCRequest, userAddress?: string): Promise<AIValidationResult> {
     try {
       // Quick validation for read-only methods
       if (isReadOnlyMethod(request.method)) {
@@ -24,8 +25,18 @@ export class AIValidationService {
         };
       }
 
+      // Get community data if user address is provided
+      let communityProfile: CommunityProfile | null = null;
+      if (userAddress && config.communityValidationEnabled) {
+        try {
+          communityProfile = await blockchainService.getUserProfile(userAddress);
+        } catch (error) {
+          console.warn('Failed to fetch community profile:', error);
+        }
+      }
+
       // Analyze with AI for complex methods
-      const analysis = await this.analyzeWithAI(request);
+      const analysis = await this.analyzeWithAI(request, communityProfile);
       return analysis;
     } catch (error: any) {
       console.error('AI validation failed:', error.message);
@@ -35,8 +46,8 @@ export class AIValidationService {
     }
   }
 
-  private async analyzeWithAI(request: RPCRequest): Promise<AIValidationResult> {
-    const prompt = this.buildAnalysisPrompt(request);
+  private async analyzeWithAI(request: RPCRequest, communityProfile?: CommunityProfile | null): Promise<AIValidationResult> {
+    const prompt = this.buildAnalysisPrompt(request, communityProfile);
     
     const response = await axios.post(`${this.baseUrl}/api/generate`, {
       model: this.model,
@@ -54,7 +65,7 @@ export class AIValidationService {
     return this.parseAIResponse(response.data.response, request);
   }
 
-  private buildAnalysisPrompt(request: RPCRequest): string {
+  private buildAnalysisPrompt(request: RPCRequest, communityProfile?: CommunityProfile | null): string {
     const { method, params } = request;
     
     let contextInfo = '';
@@ -69,22 +80,39 @@ Transaction Details:
 `;
     }
 
+    let communityInfo = '';
+    if (communityProfile) {
+      communityInfo = `
+Community Profile:
+- Username: ${communityProfile.username}
+- Trust Score: ${communityProfile.trustScore}
+- Total Posts: ${communityProfile.totalPosts}
+- Total Likes: ${communityProfile.totalLikes}
+- Helpful Responses: ${communityProfile.totalHelpfulResponses}
+- Reports Against User: ${communityProfile.reportCount}
+- Account Status: ${communityProfile.isActive ? 'Active' : 'Inactive'}
+`;
+    }
+
     return `
 You are a blockchain security analyst. Analyze this RPC call for security risks and validity.
 
 RPC Method: ${method}
 Parameters: ${JSON.stringify(params, null, 2)}
 ${contextInfo}
+${communityInfo}
 
 Please analyze:
 1. Security risk level (LOW/MEDIUM/HIGH)
 2. Whether this call should proceed (true/false)
 3. Brief reasoning (max 100 words)
+4. Community trust score impact (if applicable)
 
 Respond in this exact format:
 RISK_LEVEL: [LOW/MEDIUM/HIGH]
 SHOULD_PROCEED: [true/false]
 REASONING: [Your analysis here]
+COMMUNITY_TRUST_SCORE: [0-1000 if community data available, otherwise omit]
 
 Consider these factors:
 - Transaction value and recipient
@@ -92,6 +120,8 @@ Consider these factors:
 - Gas usage patterns
 - Known attack vectors
 - Method safety profile
+- User's community trust score and history
+- Previous reports and community standing
 `;
   }
 
@@ -102,6 +132,7 @@ Consider these factors:
       let riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' = 'MEDIUM';
       let shouldProceed = false;
       let reasoning = 'AI analysis completed';
+      let communityTrustScore: number | undefined;
 
       for (const line of lines) {
         if (line.startsWith('RISK_LEVEL:')) {
@@ -113,6 +144,12 @@ Consider these factors:
           shouldProceed = line.split(':')[1].trim().toLowerCase() === 'true';
         } else if (line.startsWith('REASONING:')) {
           reasoning = line.split(':').slice(1).join(':').trim();
+        } else if (line.startsWith('COMMUNITY_TRUST_SCORE:')) {
+          const scoreStr = line.split(':')[1].trim();
+          const score = parseInt(scoreStr);
+          if (!isNaN(score)) {
+            communityTrustScore = score;
+          }
         }
       }
 
@@ -120,6 +157,7 @@ Consider these factors:
         isValid: shouldProceed,
         riskLevel,
         reasoning,
+        communityTrustScore,
         shouldProceed
       };
     } catch (error) {

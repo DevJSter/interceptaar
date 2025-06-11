@@ -20,15 +20,39 @@ export interface AIValidationResult {
   isValid: boolean;
   riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
   reasoning: string;
+  communityTrustScore?: number;
   modifications?: any;
   shouldProceed: boolean;
+}
+
+export interface CommunityProfile {
+  username: string;
+  trustScore: number;
+  totalLikes: number;
+  totalComments: number;
+  totalPosts: number;
+  totalHelpfulResponses: number;
+  reportCount: number;
+  isActive: boolean;
+}
+
+export interface UserInteraction {
+  type: 'like' | 'comment' | 'post' | 'helpful_response';
+  value?: number;
+  timestamp?: Date;
 }
 
 export interface InterceptedCall {
   id: string;
   timestamp: Date;
   originalRequest: RPCRequest;
+  userAddress?: string;
   aiValidation: AIValidationResult;
+  communityValidation?: {
+    userTrustScore: number;
+    recommendation: 'approve' | 'reject' | 'manual_review';
+    reasoning: string;
+  };
   finalRequest?: RPCRequest;
   response?: RPCResponse;
   status: 'pending' | 'validated' | 'rejected' | 'completed' | 'failed';
@@ -41,8 +65,12 @@ export interface Config {
   ollamaUrl: string;
   ollamaModel: string;
   aiValidationEnabled: boolean;
+  communityValidationEnabled: boolean;
+  contractAddress: string;
+  privateKey: string;
   autoApprove: {
     enabled: boolean;
     lowRiskOnly: boolean;
+    highTrustUsersOnly: boolean;
   };
 }

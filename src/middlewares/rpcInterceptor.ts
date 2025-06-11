@@ -1,9 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import aiValidationService from '../services/aiValidationService';
 import rpcProxyService from '../services/rpcProxyService';
+import { blockchainService } from '../services/blockchainService';
 import config from '../utils/config';
 import { RPCRequest, RPCResponse, InterceptedCall } from '../types';
-import { generateId } from '../utils/helpers';
+import { generateId, extractUserAddress } from '../utils/helpers';
 
 // In-memory store for intercepted calls (use Redis in production)
 const interceptedCalls = new Map<string, InterceptedCall>();
