@@ -112,6 +112,13 @@ export class ValidationPipelineService {
           if (request.method === 'eth_sendTransaction') {
             await this.recordTransactionAttempt(userAddress, request);
           }
+          
+          // Record validation attempt and award rewards
+          await this.recordValidationAttempt(
+            userAddress, 
+            result.communityValidation.isValid,
+            result.communityValidation.trustLevel
+          );
         } catch (error) {
           console.warn('Community validation failed:', error);
           validationSteps.push('community_validation_failed');
@@ -287,6 +294,34 @@ export class ValidationPipelineService {
       });
     } catch (error) {
       console.warn('Failed to record transaction attempt:', error);
+    }
+  }
+
+  /**
+   * Record validation attempt and award rewards
+   */
+  private async recordValidationAttempt(
+    userAddress: string,
+    successful: boolean,
+    trustLevel: 'low' | 'medium' | 'high' | 'very_high'
+  ): Promise<void> {
+    try {
+      // Record the validation in the smart contract
+      await blockchainService.recordValidation(userAddress, userAddress, successful);
+      
+      // Award additional rewards for high-quality validations from trusted users
+      if (successful && (trustLevel === 'high' || trustLevel === 'very_high')) {
+        const bonusAmount = trustLevel === 'very_high' ? 20 : 10;
+        await blockchainService.awardCommunityReward(
+          userAddress, 
+          bonusAmount, 
+          `High-quality validation from ${trustLevel} trust user`
+        );
+      }
+      
+      console.log(`🎯 Validation recorded for ${userAddress}: ${successful ? 'successful' : 'failed'}`);
+    } catch (error) {
+      console.warn('Failed to record validation attempt:', error);
     }
   }
 

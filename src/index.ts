@@ -4,6 +4,8 @@ import config from './utils/config';
 import { interceptRPCCall, getInterceptedCall, approveCall, getCallHistory } from './middlewares/rpcInterceptor';
 import aiValidationService from './services/aiValidationService';
 import rpcProxyService from './services/rpcProxyService';
+import { blockchainService } from './services/blockchainService';
+import { validationPipelineService } from './services/validationPipelineService';
 
 const app = express();
 
@@ -124,6 +126,216 @@ app.get('/api/info', (req, res) => {
       info: 'GET /api/info - This endpoint'
     }
   });
+});
+
+// Community and Reward System Endpoints
+
+// Get user profile
+app.get('/api/community/profile/:address', async (req: express.Request, res: express.Response): Promise<void> => {
+  const { address } = req.params;
+  
+  try {
+    const profile = await blockchainService.getUserProfile(address);
+    if (!profile) {
+      res.status(404).json({
+        error: 'User profile not found',
+        address
+      });
+      return;
+    }
+    
+    res.json({
+      address,
+      profile
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch user profile',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get user reward information
+app.get('/api/rewards/info/:address', async (req: express.Request, res: express.Response): Promise<void> => {
+  const { address } = req.params;
+  
+  try {
+    const rewardInfo = await blockchainService.getRewardInfo(address);
+    const userTier = await blockchainService.getUserTier(address);
+    
+    if (!rewardInfo) {
+      res.status(404).json({
+        error: 'User reward information not found',
+        address
+      });
+      return;
+    }
+    
+    res.json({
+      address,
+      rewards: rewardInfo,
+      tier: userTier
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch reward information',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Claim rewards
+app.post('/api/rewards/claim/:address', async (req: express.Request, res: express.Response): Promise<void> => {
+  const { address } = req.params;
+  
+  try {
+    const success = await blockchainService.claimRewards(address);
+    
+    if (!success) {
+      res.status(400).json({
+        error: 'Failed to claim rewards',
+        address
+      });
+      return;
+    }
+    
+    res.json({
+      success: true,
+      message: 'Rewards claimed successfully',
+      address
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to claim rewards',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Award community reward
+app.post('/api/rewards/award', async (req: express.Request, res: express.Response): Promise<void> => {
+  const { address, amount, reason } = req.body;
+  
+  if (!address || !amount || !reason) {
+    res.status(400).json({
+      error: 'Missing required parameters',
+      required: ['address', 'amount', 'reason']
+    });
+    return;
+  }
+  
+  try {
+    const success = await blockchainService.awardCommunityReward(address, amount, reason);
+    
+    if (!success) {
+      res.status(400).json({
+        error: 'Failed to award community reward',
+        address,
+        amount,
+        reason
+      });
+      return;
+    }
+    
+    res.json({
+      success: true,
+      message: 'Community reward awarded successfully',
+      address,
+      amount,
+      reason
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to award community reward',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Register user
+app.post('/api/community/register', async (req: express.Request, res: express.Response): Promise<void> => {
+  const { address, username } = req.body;
+  
+  if (!address || !username) {
+    res.status(400).json({
+      error: 'Missing required parameters',
+      required: ['address', 'username']
+    });
+    return;
+  }
+  
+  try {
+    const success = await blockchainService.registerUser(address, username);
+    
+    if (!success) {
+      res.status(400).json({
+        error: 'Failed to register user',
+        address,
+        username
+      });
+      return;
+    }
+    
+    res.json({
+      success: true,
+      message: 'User registered successfully',
+      address,
+      username
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to register user',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get validation pipeline health
+app.get('/api/validation/health', async (req: express.Request, res: express.Response): Promise<void> => {
+  try {
+    const health = await validationPipelineService.checkHealth();
+    res.json(health);
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to check validation health',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get validation statistics
+app.get('/api/validation/stats', async (req: express.Request, res: express.Response): Promise<void> => {
+  const { range } = req.query;
+  const timeRange = range as 'hour' | 'day' | 'week' || 'day';
+  
+  try {
+    const stats = await validationPipelineService.getValidationStats(timeRange);
+    res.json({
+      timeRange,
+      stats
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch validation statistics',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Get total rewards distributed
+app.get('/api/rewards/total', async (req: express.Request, res: express.Response): Promise<void> => {
+  try {
+    const total = await blockchainService.getTotalRewardsDistributed();
+    res.json({
+      totalRewardsDistributed: total
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch total rewards distributed',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
 });
 
 // 404 handler

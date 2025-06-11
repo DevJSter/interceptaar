@@ -7,7 +7,7 @@ const config: Config = {
   ollamaModel: process.env.OLLAMA_MODEL || 'llama3.2',
   aiValidationEnabled: process.env.AI_VALIDATION === 'false' ? false : true,
   communityValidationEnabled: process.env.COMMUNITY_VALIDATION === 'false' ? false : true,
-  contractAddress: process.env.CONTRACT_ADDRESS || '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+  contractAddress: process.env.CONTRACT_ADDRESS || '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512',
   privateKey: process.env.PRIVATE_KEY || '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
   autoApprove: {
     enabled: process.env.AUTO_APPROVE === 'true',

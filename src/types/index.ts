@@ -34,12 +34,33 @@ export interface CommunityProfile {
   totalHelpfulResponses: number;
   reportCount: number;
   isActive: boolean;
+  rewardBalance?: number;
+  totalEarned?: number;
+  validationCount?: number;
+  successfulValidations?: number;
 }
 
 export interface UserInteraction {
-  type: 'like' | 'comment' | 'post' | 'helpful_response';
+  type: 'like' | 'comment' | 'post' | 'helpful_response' | 'validation';
   value?: number;
   timestamp?: Date;
+  successful?: boolean; // For validation interactions
+}
+
+export interface RewardTier {
+  minTrustScore: number;
+  baseReward: number;
+  validationReward: number;
+  tierName: string;
+}
+
+export interface RewardInfo {
+  rewardBalance: number;
+  totalEarned: number;
+  pendingReward: number;
+  validationCount: number;
+  successfulValidations: number;
+  tierName: string;
 }
 
 export interface InterceptedCall {

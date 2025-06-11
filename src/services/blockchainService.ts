@@ -67,7 +67,8 @@ export class BlockchainService {
    */
   async isUserRegistered(userAddress: string): Promise<boolean> {
     try {
-      return await this.contract.isUserRegistered(userAddress);
+      const trustScore = await this.contract.getTrustScoreForValidation(userAddress);
+      return Number(trustScore) > 0;
     } catch (error) {
       console.error('Error checking user registration:', error);
       return false;
@@ -84,16 +85,149 @@ export class BlockchainService {
       return {
         username: profile.username,
         trustScore: Number(profile.trustScore),
-        totalLikes: Number(profile.totalLikes),
-        totalComments: Number(profile.totalComments),
-        totalPosts: Number(profile.totalPosts),
-        totalHelpfulResponses: Number(profile.totalHelpfulResponses),
-        reportCount: Number(profile.reportCount),
-        isActive: profile.isActive
+        totalLikes: Number(profile.likes),
+        totalComments: Number(profile.comments),
+        totalPosts: Number(profile.posts),
+        totalHelpfulResponses: Number(profile.helpfulResponses),
+        reportCount: Number(profile.reportsReceived),
+        isActive: profile.isActive,
+        rewardBalance: Number(profile.rewardBalance),
+        totalEarned: Number(profile.totalEarned),
+        validationCount: Number(profile.validationCount),
+        successfulValidations: Number(profile.successfulValidations)
       };
     } catch (error) {
       console.error('Error fetching user profile:', error);
       return null;
+    }
+  }
+
+  /**
+   * Record a validation transaction
+   */
+  async recordValidation(validatorAddress: string, userAddress: string, successful: boolean): Promise<boolean> {
+    try {
+      const tx = await this.contract.recordValidation(validatorAddress, userAddress, successful);
+      await tx.wait();
+      
+      console.log(`Validation recorded: ${validatorAddress} validated ${userAddress} - ${successful ? 'successful' : 'failed'}`);
+      return true;
+    } catch (error) {
+      console.error('Error recording validation:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Award community reward to a user
+   */
+  async awardCommunityReward(userAddress: string, amount: number, reason: string): Promise<boolean> {
+    try {
+      const tx = await this.contract.awardCommunityReward(userAddress, amount, reason);
+      await tx.wait();
+      
+      console.log(`Community reward awarded to ${userAddress}: ${amount} for ${reason}`);
+      return true;
+    } catch (error) {
+      console.error('Error awarding community reward:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Claim pending rewards
+   */
+  async claimRewards(userAddress: string): Promise<boolean> {
+    try {
+      const tx = await this.contract.claimRewards();
+      await tx.wait();
+      
+      console.log(`Rewards claimed by ${userAddress}`);
+      return true;
+    } catch (error) {
+      console.error('Error claiming rewards:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Withdraw rewards
+   */
+  async withdrawRewards(userAddress: string, amount: number): Promise<boolean> {
+    try {
+      const tx = await this.contract.withdrawRewards(amount);
+      await tx.wait();
+      
+      console.log(`${amount} rewards withdrawn by ${userAddress}`);
+      return true;
+    } catch (error) {
+      console.error('Error withdrawing rewards:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get user's reward tier information
+   */
+  async getUserTier(userAddress: string): Promise<{
+    minTrustScore: number;
+    baseReward: number;
+    validationReward: number;
+    tierName: string;
+  } | null> {
+    try {
+      const tier = await this.contract.getUserTier(userAddress);
+      
+      return {
+        minTrustScore: Number(tier.minTrustScore),
+        baseReward: Number(tier.baseReward),
+        validationReward: Number(tier.validationReward),
+        tierName: tier.tierName
+      };
+    } catch (error) {
+      console.error('Error fetching user tier:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get comprehensive reward information for a user
+   */
+  async getRewardInfo(userAddress: string): Promise<{
+    rewardBalance: number;
+    totalEarned: number;
+    pendingReward: number;
+    validationCount: number;
+    successfulValidations: number;
+    tierName: string;
+  } | null> {
+    try {
+      const rewardInfo = await this.contract.getRewardInfo(userAddress);
+      
+      return {
+        rewardBalance: Number(rewardInfo.rewardBalance),
+        totalEarned: Number(rewardInfo.totalEarned),
+        pendingReward: Number(rewardInfo.pendingReward),
+        validationCount: Number(rewardInfo.validationCount),
+        successfulValidations: Number(rewardInfo.successfulValidations),
+        tierName: rewardInfo.tierName
+      };
+    } catch (error) {
+      console.error('Error fetching reward info:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get total rewards distributed across the system
+   */
+  async getTotalRewardsDistributed(): Promise<number> {
+    try {
+      const total = await this.contract.getTotalRewardsDistributed();
+      return Number(total);
+    } catch (error) {
+      console.error('Error fetching total rewards distributed:', error);
+      return 0;
     }
   }
 
