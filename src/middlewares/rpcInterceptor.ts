@@ -57,29 +57,75 @@ export const interceptRPCCall = async (
       interceptedCalls.set(callId, interceptedCall);
 
       try {
+        // Extract user address for community validation
+        const userAddress = extractUserAddress(request);
+        if (userAddress) {
+          interceptedCall.userAddress = userAddress;
+        }
+
         // AI Validation (if enabled)
         if (config.aiValidationEnabled) {
-          console.log(`🤖 Validating RPC call: ${request.method}`);
+          console.log(`🤖 Validating RPC call: ${request.method} ${userAddress ? `from ${userAddress}` : ''}`);
           
-          const validation = await aiValidationService.validateRPCCall(request);
+          const validation = await aiValidationService.validateRPCCall(request, userAddress);
           interceptedCall.aiValidation = validation;
-          interceptedCall.status = validation.shouldProceed ? 'validated' : 'rejected';
+
+          // Community Validation (if enabled and user address available)
+          if (config.communityValidationEnabled && userAddress) {
+            console.log(`👥 Performing community validation for ${userAddress}`);
+            
+            try {
+              const communityValidation = await blockchainService.validateTransactionWithCommunity(
+                userAddress,
+                request.params?.[0] || {}
+              );
+
+              interceptedCall.communityValidation = {
+                userTrustScore: communityValidation.profile?.trustScore || 0,
+                recommendation: communityValidation.isValid ? 'approve' : 'reject',
+                reasoning: communityValidation.warnings.join('; ') || 'Community validation completed'
+              };
+
+              // Combine AI and community validation results
+              const finalShouldProceed = validation.shouldProceed && communityValidation.isValid;
+              
+              if (!finalShouldProceed) {
+                const combinedReasoning = [
+                  validation.reasoning,
+                  ...communityValidation.warnings
+                ].filter(Boolean).join('; ');
+
+                interceptedCall.aiValidation.shouldProceed = false;
+                interceptedCall.aiValidation.reasoning = combinedReasoning;
+              }
+
+              console.log(`👥 Community validation: ${communityValidation.trustLevel} trust, ${communityValidation.isValid ? 'approved' : 'rejected'}`);
+            } catch (communityError) {
+              console.warn('Community validation failed:', communityError);
+              // Continue with AI validation only
+            }
+          }
+
+          interceptedCall.status = interceptedCall.aiValidation.shouldProceed ? 'validated' : 'rejected';
 
           // Check auto-approval settings
           const shouldAutoApprove = config.autoApprove.enabled && 
-            (validation.riskLevel === 'LOW' || !config.autoApprove.lowRiskOnly);
+            (interceptedCall.aiValidation.riskLevel === 'LOW' || !config.autoApprove.lowRiskOnly) &&
+            (!config.autoApprove.highTrustUsersOnly || 
+             (interceptedCall.communityValidation?.userTrustScore || 0) >= 500);
 
-          if (!validation.shouldProceed) {
-            console.log(`❌ Request rejected: ${validation.reasoning}`);
+          if (!interceptedCall.aiValidation.shouldProceed) {
+            console.log(`❌ Request rejected: ${interceptedCall.aiValidation.reasoning}`);
             
             const errorResponse: RPCResponse = {
               jsonrpc: request.jsonrpc,
               error: {
                 code: -32001,
-                message: 'Request rejected by AI validation',
+                message: 'Request rejected by validation',
                 data: {
-                  riskLevel: validation.riskLevel,
-                  reasoning: validation.reasoning,
+                  riskLevel: interceptedCall.aiValidation.riskLevel,
+                  reasoning: interceptedCall.aiValidation.reasoning,
+                  communityTrustScore: interceptedCall.communityValidation?.userTrustScore,
                   callId
                 }
               },
@@ -92,7 +138,7 @@ export const interceptRPCCall = async (
             continue;
           }
 
-          if (!shouldAutoApprove && validation.riskLevel !== 'LOW') {
+          if (!shouldAutoApprove && interceptedCall.aiValidation.riskLevel !== 'LOW') {
             console.log(`⚠️  Manual approval required for ${request.method}`);
             
             const pendingResponse: RPCResponse = {
