@@ -1,6 +1,6 @@
-# RPC Interceptor with AI & Community Validation
+# 🛡️ RPC Interceptor with AI & Community Validation
 
-A comprehensive blockchain RPC interceptor that validates transactions using AI (Ollama) and community trust scores before sending them to the blockchain. The system combines artificial intelligence, smart contract-based community validation, and automated transaction approval pipelines.
+A comprehensive blockchain RPC interceptor that validates transactions using AI (Ollama) and community-based trust scoring before forwarding to the target blockchain. Features a complete reward system for community participation and sophisticated approval mechanisms.
 
 ## 🏗️ System Architecture
 
