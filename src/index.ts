@@ -7,12 +7,19 @@ import rpcProxyService from './services/rpcProxyService';
 import { blockchainService } from './services/blockchainService';
 import { validationPipelineService } from './services/validationPipelineService';
 import { qtoRoutes } from './routes/qtoRoutes';
+import aiRoutes from './routes/aiRoutes';
+import aiRewardRoutes from './routes/aiRewardRoutes';
 
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+// Routes
+app.use('/api/ai', aiRoutes);
+app.use('/api/ai-rewards', aiRewardRoutes);
+app.use('/api/qto', qtoRoutes);
 
 // Logging middleware
 app.use((req, res, next) => {
@@ -338,10 +345,6 @@ app.get('/api/rewards/total', async (req: express.Request, res: express.Response
     });
   }
 });
-
-// QTO reward system routes
-// QTO API routes
-app.use('/api/qto', qtoRoutes);
 
 // 404 handler
 app.use((req, res) => {

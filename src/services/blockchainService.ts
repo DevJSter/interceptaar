@@ -21,8 +21,9 @@ const COMMUNITY_CONTRACT_ABI = [
   // QTO Token Functions
   "function qtoBalanceOf(address account) external view returns (uint256)",
   "function qtoTransfer(address to, uint256 amount) external returns (bool)",
-  "function qtoApprove(address spender, uint256 amount) external returns (bool)",
-  "function qtoAllowance(address owner, address spender) external view returns (uint256)",
+  "function getContractQtoBalance() external view returns (uint256)",
+  "function fundContractQto(uint256 amount) external",
+  "function mintQtoToContract(uint256 amount) external",
   
   // QoneQt Interaction Functions  
   "function processQoneqtInteraction(address user, uint8 interactionType, uint256 aiSignificance, string memory metadata) external",
@@ -427,30 +428,75 @@ export class BlockchainService {
    */
   
   /**
-   * Get QTO token balance for a user
+   * Get QTO token balance for an address
    */
-  async getQtoBalance(userAddress: string): Promise<string> {
+  async getQtoBalance(address: string): Promise<string> {
     try {
-      const balance = await this.contract.qtoBalanceOf(userAddress);
+      const balance = await this.contract.qtoBalanceOf(address);
       return balance.toString();
     } catch (error) {
-      console.error('Error fetching QTO balance:', error);
+      console.error('Error getting QTO balance:', error);
       return '0';
     }
   }
 
   /**
-   * Transfer QTO tokens between users
+   * Transfer QTO tokens between addresses
    */
-  async transferQto(fromAddress: string, toAddress: string, amount: string): Promise<boolean> {
+  async transferQto(to: string, amount: string): Promise<boolean> {
     try {
-      const tx = await this.contract.qtoTransfer(toAddress, amount);
+      const tx = await this.contract.qtoTransfer(to, amount);
       await tx.wait();
       
-      console.log(`QTO transfer: ${amount} from ${fromAddress} to ${toAddress}`);
+      console.log(`QTO transferred: ${amount} to ${to}`);
       return true;
     } catch (error) {
       console.error('Error transferring QTO:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get contract's QTO balance (available for rewards)
+   */
+  async getContractQtoBalance(): Promise<string> {
+    try {
+      const balance = await this.contract.getContractQtoBalance();
+      return balance.toString();
+    } catch (error) {
+      console.error('Error getting contract QTO balance:', error);
+      return '0';
+    }
+  }
+
+  /**
+   * Fund the contract with QTO tokens for rewards
+   */
+  async fundContractQto(amount: string): Promise<boolean> {
+    try {
+      const tx = await this.contract.fundContractQto(amount);
+      await tx.wait();
+      
+      console.log(`Contract funded with ${amount} QTO tokens`);
+      return true;
+    } catch (error) {
+      console.error('Error funding contract with QTO:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Mint additional QTO tokens to the contract (for testing)
+   */
+  async mintQtoToContract(amount: string): Promise<boolean> {
+    try {
+      const tx = await this.contract.mintQtoToContract(amount);
+      await tx.wait();
+      
+      console.log(`Minted ${amount} QTO tokens to contract`);
+      return true;
+    } catch (error) {
+      console.error('Error minting QTO to contract:', error);
       return false;
     }
   }
@@ -592,35 +638,6 @@ export class BlockchainService {
     } catch (error) {
       console.error('Error estimating QTO reward:', error);
       return '0';
-    }
-  }
-
-  /**
-   * Get QTO token information
-   */
-  async getQtoTokenInfo(): Promise<{
-    name: string;
-    symbol: string;
-    decimals: number;
-    totalSupply: string;
-  }> {
-    try {
-      const info = await this.contract.getQtoTokenInfo();
-      
-      return {
-        name: info.name,
-        symbol: info.symbol,
-        decimals: Number(info.decimals),
-        totalSupply: info.totalSupply.toString()
-      };
-    } catch (error) {
-      console.error('Error fetching QTO token info:', error);
-      return {
-        name: 'QoneQt Token',
-        symbol: 'QTO',
-        decimals: 18,
-        totalSupply: '1000000000000000000000000000'
-      };
     }
   }
 

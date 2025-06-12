@@ -626,14 +626,27 @@ contract CommunityInteractionRating {
     function _awardReward(address user, uint256 amount, string memory reason) internal {
         UserProfile storage profile = userProfiles[user];
         
+        // Convert amount to QTO wei (18 decimals)
+        uint256 qtoAmount = amount * 10**18;
+        
         // Apply tier multiplier
         RewardTier memory tier = _getUserTier(user);
-        uint256 finalAmount = (amount * tier.baseReward);
+        uint256 finalAmount = (qtoAmount * tier.qtoMultiplier) / 1000; // qtoMultiplier is in basis points
         
-        pendingRewards[user] += finalAmount;
-        profile.totalEarned += finalAmount;
-        totalRewardsDistributed += finalAmount;
+        // Check if contract has enough QTO tokens
+        require(qtoBalances[address(this)] >= finalAmount, "Contract insufficient QTO balance");
         
+        // Transfer actual QTO tokens from contract to user
+        qtoBalances[address(this)] -= finalAmount;
+        qtoBalances[user] += finalAmount;
+        
+        // Update tracking
+        profile.qtoBalance += finalAmount;
+        profile.totalQtoEarned += finalAmount;
+        profile.totalEarned += amount; // Keep legacy tracking
+        totalRewardsDistributed += amount;
+        
+        emit QtoTransfer(address(this), user, finalAmount);
         emit RewardEarned(user, finalAmount, reason);
     }
     
@@ -679,5 +692,38 @@ contract CommunityInteractionRating {
         profile.lastUpdateTime = block.timestamp;
         
         emit TrustScoreUpdated(user, newScore, block.timestamp);
+    }
+    
+    // QTO Contract Management Functions
+    function getContractQtoBalance() external view returns (uint256) {
+        return qtoBalances[address(this)];
+    }
+    
+    function fundContractQto(uint256 amount) external {
+        require(qtoBalances[msg.sender] >= amount, "Insufficient QTO balance");
+        
+        qtoBalances[msg.sender] -= amount;
+        qtoBalances[address(this)] += amount;
+        
+        emit QtoTransfer(msg.sender, address(this), amount);
+    }
+    
+    function emergencyWithdrawQto(address to, uint256 amount) external {
+        // In a real implementation, this would need proper access control
+        require(qtoBalances[address(this)] >= amount, "Contract insufficient QTO balance");
+        
+        qtoBalances[address(this)] -= amount;
+        qtoBalances[to] += amount;
+        
+        emit QtoTransfer(address(this), to, amount);
+    }
+    
+    // QTO token utility functions
+    function mintQtoToContract(uint256 amount) external {
+        // In a real implementation, this would need proper access control
+        qtoBalances[address(this)] += amount;
+        qtoTotalSupply += amount;
+        
+        emit QtoTransfer(address(0), address(this), amount);
     }
 }

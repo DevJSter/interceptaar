@@ -98,6 +98,10 @@ export interface Config {
     lowRiskOnly: boolean;
     highTrustUsersOnly: boolean;
   };
+  pagination: {
+    defaultLimit: number;
+    maxLimit: number;
+  };
 }
 
 export interface QoneqtInteractionData {
@@ -168,4 +172,118 @@ export interface QtoUserStats {
   avgSignificanceScore: number;
   currentTier: string;
   significanceHistory: SignificanceHistory[];
+}
+
+export interface PostInteraction {
+  postId: string;
+  creatorAddress: string;
+  interactorAddress: string;
+  content: string;
+  interactionType: 'like' | 'comment' | 'share' | 'reaction';
+  interactionContent?: string;
+  timestamp: number;
+}
+
+export interface AIRewardAssessment {
+  postId: string;
+  creatorAddress: string;
+  interactorAddress: string;
+  significanceScore: number; // 0.000 to 1.000
+  qtoAmount: number; // 0 to 30 QTO
+  reasoning: string;
+  validationStatus: 'approved' | 'rejected';
+  assessmentTimestamp: number;
+  qualityBreakdown?: {
+    contentQuality: number;
+    communityValue: number;
+    interactionQuality: number;
+    technicalMerit: number;
+  };
+}
+
+export interface AIRewardBatchResult {
+  assessments: AIRewardAssessment[];
+  summary: {
+    totalInteractions: number;
+    approvedInteractions: number;
+    rejectedInteractions: number;
+    totalQtoAllocated: number;
+    approvalRate: string;
+  };
+}
+
+export interface UserRewardStats {
+  totalQTOEarned: number;
+  totalAssessments: number;
+  approvalRate: number;
+  averageSignificance: number;
+  recentAssessments?: AIRewardAssessment[];
+}
+
+export interface OllamaRequest {
+  model: string;
+  prompt: string;
+  stream?: boolean;
+  options?: {
+    temperature?: number;
+    top_p?: number;
+    top_k?: number;
+    [key: string]: any;
+  };
+}
+
+export interface OllamaResponse {
+  model: string;
+  created_at: string;
+  response: string;
+  done: boolean;
+  context?: number[];
+  total_duration?: number;
+  load_duration?: number;
+  prompt_eval_count?: number;
+  prompt_eval_duration?: number;
+  eval_count?: number;
+  eval_duration?: number;
+}
+
+// User management types
+export interface User {
+  id: string;
+  username: string;
+  email: string;
+  address: string;
+  trustScore: number;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  qtoBalance?: string;
+  totalQtoEarned?: string;
+}
+
+export interface CreateUserRequest {
+  username: string;
+  email: string;
+  address: string;
+}
+
+export interface UpdateUserRequest {
+  username?: string;
+  email?: string;
+  trustScore?: number;
+  isActive?: boolean;
+}
+
+export interface PaginationQuery {
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  search?: string;
+}
+
+export interface AITransactionRequest {
+  method: string;
+  params: any[];
+  userAddress: string;
+  metadata?: string;
 }

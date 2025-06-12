@@ -2,6 +2,21 @@ export const generateId = (): string => {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 };
 
+export const createResponse = (
+  success: boolean,
+  message: string,
+  data?: any,
+  error?: string
+) => {
+  return {
+    success,
+    message,
+    data,
+    error,
+    timestamp: new Date().toISOString()
+  };
+};
+
 export const isReadOnlyMethod = (method: string): boolean => {
   const readOnlyMethods = [
     'eth_blockNumber',
@@ -79,4 +94,9 @@ export const extractUserAddress = (request: any): string | undefined => {
     console.warn('Error extracting user address:', error);
     return undefined;
   }
+};
+
+export const validateEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
 };
